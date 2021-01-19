@@ -75,7 +75,8 @@
     "reselect": "^4.0.0",
     "sockjs-client": "^1.4.0",
     "umd-compat-loader": "2.1.1",
-    "yaml-language-server": "^0.13.0"
+    "yaml-language-server": "^0.13.0",
+    "@eclipse-che/devworkspace-client": "../devworkspace-client"
   },
   "devDependencies": {
     "@eclipse-che/api": "^7.18.1",
