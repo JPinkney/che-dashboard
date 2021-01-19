@@ -18,8 +18,11 @@ import { container } from '../../inversify.config';
 import { CheWorkspaceClient } from '../../services/cheWorkspaceClient';
 import { WorkspaceStatus } from '../../services/helpers/types';
 import { createState } from '../helpers';
+import { DevWorkspaceClient } from '../../services/devWorkspaceClient';
+import { AxiosError } from 'axios';
 
 const WorkspaceClient = container.get(CheWorkspaceClient);
+const DWClient = container.get(DevWorkspaceClient);
 
 // This state defines the type of data maintained in the Redux store.
 export interface State {
@@ -228,6 +231,39 @@ export const actionCreators: ActionCreators = {
 
     try {
       const workspaces = await WorkspaceClient.restApiClient.getAll<che.Workspace>();
+      const devworkspaces = await DWClient.devWorkspaceClientRestApi.getAllDevWorkspaces();
+      devworkspaces.forEach((devworkspace: any) => {
+        devworkspace.namespace = devworkspace.metadata.namespace;
+        devworkspace.devfile = {
+          metadata: {
+            name: devworkspace.metadata.name
+          }
+        };
+        devworkspace.attributes = {
+          infrastructureNamespace: devworkspace.namespace,
+          created: '1611066990669',
+          updated: '1611066990669'
+        };
+        devworkspace.id = devworkspace.status.workspaceId;
+        devworkspace.runtime = {
+          status: 'RUNNING',
+          activeEnv: '',
+          machines: {
+            theia: {
+              servers: {
+                theia: {
+                  attributes: {
+                    type: 'ide'
+                  },
+                  url: devworkspace.status.ideUrl
+                }
+              }
+            }
+          }
+        };
+        devworkspace.status = devworkspace.status.phase.toUpperCase();
+      });
+      const availableWorkspaces = workspaces.concat(devworkspaces as che.Workspace[]);
 
       // Unsubscribe
       subscribedWorkspaceStatusCallbacks.forEach((workspaceStatusCallback: WorkspaceStatusMessageHandler, workspaceId: string) => {
@@ -235,11 +271,11 @@ export const actionCreators: ActionCreators = {
       });
 
       // Subscribe
-      workspaces.forEach(workspace => {
+      availableWorkspaces.forEach(workspace => {
         subscribeToStatusChange(workspace.id, dispatch);
       });
 
-      dispatch({ type: 'RECEIVE_WORKSPACES', workspaces });
+      dispatch({ type: 'RECEIVE_WORKSPACES', workspaces: availableWorkspaces });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
       throw new Error('Failed to request workspaces: \n' + e);
@@ -251,7 +287,14 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
 
     try {
-      const workspace = await WorkspaceClient.restApiClient.getById<che.Workspace>(workspaceId);
+      const workspace = await WorkspaceClient.restApiClient.getById<che.Workspace>(workspaceId).catch(async (e: AxiosError) => {
+        if (e.response?.status === 404) {
+          const returnedWorkspace = await DWClient.devWorkspaceClientRestApi.getDevWorkspaceById<che.Workspace>(workspaceId);
+          console.log(returnedWorkspace);
+          return returnedWorkspace;
+        }
+      }) as che.Workspace;
+
       dispatch({ type: 'UPDATE_WORKSPACE', workspace });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
