@@ -289,9 +289,7 @@ export const actionCreators: ActionCreators = {
     try {
       const workspace = await WorkspaceClient.restApiClient.getById<che.Workspace>(workspaceId).catch(async (e: AxiosError) => {
         if (e.response?.status === 404) {
-          const returnedWorkspace = await DWClient.devWorkspaceClientRestApi.getDevWorkspaceById<che.Workspace>(workspaceId);
-          console.log(returnedWorkspace);
-          return returnedWorkspace;
+          return DWClient.devWorkspaceClientRestApi.getDevWorkspaceById<che.Workspace>(workspaceId);
         }
       }) as che.Workspace;
 
@@ -328,7 +326,11 @@ export const actionCreators: ActionCreators = {
 
   stopWorkspace: (workspaceId: string): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
     try {
-      await WorkspaceClient.restApiClient.stop(workspaceId);
+      await WorkspaceClient.restApiClient.stop(workspaceId).catch(async (e: AxiosError) => {
+        if (e.response?.status === 404) {
+          // DWClient.devWorkspaceClientRestApi.stop(workspaceId);
+        }
+      });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
       throw new Error(`Failed to stop the workspace, ID: ${workspaceId}, ` + e.message);
