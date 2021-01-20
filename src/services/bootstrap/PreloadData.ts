@@ -55,6 +55,31 @@ export class PreloadData {
     this.updateWorkspaces();
     this.updateInfrastructureNamespaces();
 
+    const origin = new URL(window.location.href).origin.replace('http', 'ws');
+    const unsupported = '/api/unsupported';
+
+    const socket = new WebSocket(`${origin}${unsupported}/k8s/apis/workspace.devfile.io/v1alpha2/namespaces/devworkspace-operator/devworkspaces?watch=true`);
+    socket.onopen = function (e) {
+      console.log('Opened websocket');
+      console.log(e);
+    };
+
+    socket.onmessage = function (event) {
+      console.log(event);
+    };
+
+    socket.onclose = function (event) {
+      if (event.wasClean) {
+        console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+      } else {
+        console.log('[close] Connection died');
+      }
+    };
+
+    socket.onerror = function (error) {
+      console.log(`[error] ${error.eventPhase}`);
+    };
+
     const settings = await this.updateWorkspaceSettings();
     await this.updatePlugins(settings);
     await this.updateRegistriesMetadata(settings);
