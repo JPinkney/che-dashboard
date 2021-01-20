@@ -155,13 +155,13 @@ const subscribedWorkspaceStatusCallbacks = new Map<string, WorkspaceStatusMessag
 const subscribedEnvironmentOutputCallbacks = new Map<string, EnvironmentOutputMessageHandler>();
 
 function subscribeToStatusChange(
-  workspaceId: string,
+  workspace: che.Workspace,
   dispatch: ThunkDispatch<State, undefined, UpdateWorkspaceStatusAction | UpdateWorkspacesLogsAction | DeleteWorkspaceLogsAction>): void {
   const callback = message => {
     let status: string;
     if (message.error) {
       const workspacesLogs = new Map<string, string[]>();
-      workspacesLogs.set(workspaceId, [`Error: Failed to run the workspace: "${message.error}"`]);
+      workspacesLogs.set(workspace.id, [`Error: Failed to run the workspace: "${message.error}"`]);
       dispatch({
         type: 'UPDATE_WORKSPACES_LOGS',
         workspacesLogs,
@@ -173,16 +173,20 @@ function subscribeToStatusChange(
     if (WorkspaceStatus[status]) {
       dispatch({
         type: 'UPDATE_WORKSPACE_STATUS',
-        workspaceId,
+        workspaceId: workspace.id,
         status,
       });
     }
     if (WorkspaceStatus[WorkspaceStatus.STARTING] !== status) {
-      unSubscribeToEnvironmentOutput(workspaceId);
+      unSubscribeToEnvironmentOutput(workspace.id);
     }
   };
-  WorkspaceClient.jsonRpcMasterApi.subscribeWorkspaceStatus(workspaceId, callback);
-  subscribedWorkspaceStatusCallbacks.set(workspaceId, callback);
+  if ((workspace as any).metadata?.namespace !== undefined) {
+    DWClient.devWorkspaceClientRestApi.subscribeWorkspaceStatus(workspace, callback);
+  } else {
+    WorkspaceClient.jsonRpcMasterApi.subscribeWorkspaceStatus(workspace.id, callback);
+  }
+  subscribedWorkspaceStatusCallbacks.set(workspace.id, callback);
 }
 
 function unSubscribeToStatusChange(workspaceId: string): void {
@@ -271,8 +275,8 @@ export const actionCreators: ActionCreators = {
       });
 
       // Subscribe
-      availableWorkspaces.forEach(workspace => {
-        subscribeToStatusChange(workspace.id, dispatch);
+      availableWorkspaces.forEach((workspace: any) => {
+        subscribeToStatusChange(workspace, dispatch);
       });
 
       dispatch({ type: 'RECEIVE_WORKSPACES', workspaces: availableWorkspaces });
@@ -390,7 +394,7 @@ export const actionCreators: ActionCreators = {
       const workspace = await WorkspaceClient.restApiClient.create<che.Workspace>(devfile, param);
       dispatch({ type: 'ADD_WORKSPACE', workspace });
       // Subscribe
-      subscribeToStatusChange(workspace.id, dispatch);
+      subscribeToStatusChange(workspace, dispatch);
 
       return workspace;
     } catch (e) {
