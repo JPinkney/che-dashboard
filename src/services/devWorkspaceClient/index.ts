@@ -13,7 +13,8 @@
 import { injectable } from 'inversify';
 import { KeycloakAuthService } from '../keycloak/auth';
 import { DevWorkspaceClient as WorkspaceClient } from '@eclipse-che/devworkspace-client';
-import { IDevWorkspaceRestApi } from '@eclipse-che/devworkspace-client/dist/rest';
+import { IDevWorkspaceApi } from '@eclipse-che/devworkspace-client/dist/api';
+import { AxiosRequestConfig } from 'axios';
 
 /**
  * This class manages the api connection.
@@ -21,71 +22,51 @@ import { IDevWorkspaceRestApi } from '@eclipse-che/devworkspace-client/dist/rest
 @injectable()
 export class DevWorkspaceClient {
 
+  private devworkspaceApi: IDevWorkspaceApi;
+
   /**
    * Default constructor that is using resource.
    */
   constructor() {
     const originLocation = new URL(window.location.href).origin;
-    WorkspaceClient.configureAxios({
+    this.devworkspaceApi = WorkspaceClient.getApi(this.refreshToken);
+    this.devworkspaceApi.configureAxios({
       baseURL: originLocation
     });
-    this.tokenUpdater();
   }
 
-  get devWorkspaceClientRestApi(): IDevWorkspaceRestApi {
-    return WorkspaceClient.getRestApi();
-  }
-
-  private tokenUpdater() {
-    let isUpdated: boolean;
-    const updateTimer = () => {
-      if (!isUpdated) {
-        isUpdated = true;
-        setTimeout(() => {
-          isUpdated = false;
-        }, 30000);
-      }
-    };
-    updateTimer();
-    const interceptor = (async request => {
-      const header = 'Authorization';
-      const { keycloak } = KeycloakAuthService;
-      if (keycloak && keycloak.updateToken && !isUpdated) {
-        updateTimer();
-        try {
-          await new Promise((resolve, reject) => {
-            keycloak.updateToken(5).success((refreshed: boolean) => {
-              if (refreshed && keycloak.token) {
-                WorkspaceClient.configureAxios({
-                  token: keycloak.token
-                });
-                request.headers.common[header] = `Bearer ${keycloak.token}`;
-              }
-              resolve(keycloak);
-            }).error((error: any) => {
-              reject(new Error(error));
-            });
-          });
-        } catch (e) {
-          console.error('Failed to update token.', e);
-          window.sessionStorage.setItem('oidcDashboardRedirectUrl', location.href);
-          if (keycloak.login) {
-            keycloak.login();
-          }
-        }
-      }
-      if (!request.headers?.common[header]) {
-        request.headers.common[header] = `Bearer ${this.token}`;
-      }
-      return request;
-    });
-    WorkspaceClient.configureAxios({
-      interceptors: [interceptor]
-    });
+  get devWorkspaceClientRestApi(): IDevWorkspaceApi {
+    return this.devworkspaceApi;
   }
 
   private get token(): string | undefined {
     const { keycloak } = KeycloakAuthService;
     return keycloak ? keycloak.token : undefined;
+  }
+
+  private refreshToken(request?: AxiosRequestConfig): Promise<string | Error> {
+    const { keycloak } = KeycloakAuthService;
+    if (keycloak) {
+      return new Promise((resolve, reject) => {
+        keycloak.updateToken(5).success((refreshed: boolean) => {
+          if (refreshed && keycloak.token) {
+            const header = 'Authorization';
+            this.devworkspaceApi.configureAxios({
+              token: keycloak.token
+            });
+            if (request) {
+              request.headers.common[header] = `Bearer ${keycloak.token}`;
+            }
+          }
+          resolve(keycloak.token as string);
+        }).error((error: any) => {
+          reject(new Error(error));
+        });
+      });
+    }
+    if (!this.token) {
+      return Promise.reject(new Error('Unable to resolve token'));
+    }
+    return Promise.resolve(this.token);
   }
 }

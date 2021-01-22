@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-this-alias */
 /*
  * Copyright (c) 2018-2020 Red Hat, Inc.
  * This program and the accompanying materials are made
@@ -22,6 +23,7 @@ import * as InfrastructureNamespaceStore from '../../store/InfrastructureNamespa
 import * as Plugins from '../../store/Plugins';
 import { KeycloakAuthService } from '../keycloak/auth';
 import { CheWorkspaceClient } from '../cheWorkspaceClient';
+import { DevWorkspaceClient } from '../devWorkspaceClient';
 
 /**
  * This class prepares all init data.
@@ -37,6 +39,9 @@ export class PreloadData {
 
   @lazyInject(CheWorkspaceClient)
   private readonly cheWorkspaceClient: CheWorkspaceClient;
+
+  @lazyInject(DevWorkspaceClient)
+  private readonly devWorkspaceClient: DevWorkspaceClient;
 
   private store: Store<AppState>;
 
@@ -55,6 +60,11 @@ export class PreloadData {
     this.updateWorkspaces();
     this.updateInfrastructureNamespaces();
 
+    // fetch('http://localhost:8080/apis/workspace.devfile.io/v1alpha2/namespaces/sample/devworkspaces?watch=true').then(response => {
+    //     return this.bufferResponse(response);
+    // }).then((d) => {
+    //   console.log(d);
+    // });
     const settings = await this.updateWorkspaceSettings();
     await this.updatePlugins(settings);
     await this.updateRegistriesMetadata(settings);

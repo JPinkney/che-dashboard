@@ -124,6 +124,7 @@ export class EditorTab extends React.PureComponent<Props, State> {
             onChange={(devfile, isValid) => {
               this.onDevfileChange(devfile, isValid);
             }}
+            isReadonly={(originDevfile as any).kind !== 'DevWorkspace'}
           />
           <Button onClick={() => this.cancelChanges()} variant="secondary" className="cancle-button"
             isDisabled={!this.state.hasChanges && this.state.isDevfileValid}>

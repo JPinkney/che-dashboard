@@ -153,6 +153,7 @@ type WorkspaceStatusMessageHandler = (message: api.che.workspace.event.Workspace
 type EnvironmentOutputMessageHandler = (message: api.che.workspace.event.RuntimeLogEvent) => void;
 const subscribedWorkspaceStatusCallbacks = new Map<string, WorkspaceStatusMessageHandler>();
 const subscribedEnvironmentOutputCallbacks = new Map<string, EnvironmentOutputMessageHandler>();
+const devworkspaceNamespaceMonitor = new Set<string>();
 
 function subscribeToStatusChange(
   workspace: che.Workspace,
@@ -181,12 +182,21 @@ function subscribeToStatusChange(
       unSubscribeToEnvironmentOutput(workspace.id);
     }
   };
+
+  // {error: "Runtime start for identity 'workspace: workspacexk…4ac0c-07ad-48e1-a41b-a938d69f0d93' is interrupted", initiatedByUser: true, status: "STOPPED", prevStatus: "STARTING", workspaceId: "workspacexkr7kbeuocch8mxl"}
+  // TODO just check if workspace is devworkspace
   if ((workspace as any).metadata?.namespace !== undefined) {
-    DWClient.devWorkspaceClientRestApi.subscribeWorkspaceStatus(workspace, callback);
+    const namespace = (workspace as any).metadata?.namespace;
+
+    // Only subscribe to the namespace if it hasn't already been subscribed too
+    if (!devworkspaceNamespaceMonitor.has(namespace)) {
+      DWClient.devWorkspaceClientRestApi.subscribeToDevWorkspaceUpdates(namespace, callback);
+      devworkspaceNamespaceMonitor.add(namespace);
+    }
   } else {
     WorkspaceClient.jsonRpcMasterApi.subscribeWorkspaceStatus(workspace.id, callback);
+    subscribedWorkspaceStatusCallbacks.set(workspace.id, callback);
   }
-  subscribedWorkspaceStatusCallbacks.set(workspace.id, callback);
 }
 
 function unSubscribeToStatusChange(workspaceId: string): void {
@@ -239,9 +249,7 @@ export const actionCreators: ActionCreators = {
       devworkspaces.forEach((devworkspace: any) => {
         devworkspace.namespace = devworkspace.metadata.namespace;
         devworkspace.devfile = {
-          metadata: {
-            name: devworkspace.metadata.name
-          }
+          metadata: devworkspace.metadata
         };
         devworkspace.attributes = {
           infrastructureNamespace: devworkspace.namespace,
@@ -332,7 +340,7 @@ export const actionCreators: ActionCreators = {
     try {
       await WorkspaceClient.restApiClient.stop(workspaceId).catch(async (e: AxiosError) => {
         if (e.response?.status === 404) {
-          // DWClient.devWorkspaceClientRestApi.stop(workspaceId);
+          DWClient.devWorkspaceClientRestApi.stop(workspaceId);
         }
       });
     } catch (e) {
@@ -391,7 +399,12 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
     try {
       const param = { attributes, namespace, infrastructureNamespace };
-      const workspace = await WorkspaceClient.restApiClient.create<che.Workspace>(devfile, param);
+      let workspace;
+      if ((devfile as any).kind === 'DevWorkspace') {
+        workspace = await DWClient.devWorkspaceClientRestApi.create(devfile, param);
+      } else {
+        workspace = await WorkspaceClient.restApiClient.create<che.Workspace>(devfile, param);
+      }
       dispatch({ type: 'ADD_WORKSPACE', workspace });
       // Subscribe
       subscribeToStatusChange(workspace, dispatch);
