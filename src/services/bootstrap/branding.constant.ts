@@ -21,6 +21,11 @@ export type BrandingData = {
   supportEmail: string;
   docs: BrandingDocs;
   configuration: BrandingConfiguration;
+  header?: BrandingHeader;
+}
+
+export type BrandingHeader = {
+  warning: string;
 }
 
 export type BrandingDocs = {
@@ -65,4 +70,7 @@ export const BRANDING_DEFAULT: BrandingData = {
   configuration: {
     cheCliTool: 'chectl'
   },
+  header: {
+    warning: 'On date January 04, 2019 07:00 GMT, The service will undergo scheduled maintenance. More information can be found on the <a href="url">website</a>'
+  }
 };
