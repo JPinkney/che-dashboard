@@ -107,7 +107,7 @@ class WorkspaceDetailsContainer extends React.PureComponent<Props> {
         break;
       case WorkspaceAction.START_DEBUG_AND_OPEN_LOGS:
         try {
-          await this.props.startWorkspace(workspace.id, { 'debug-workspace-start': true });
+          await this.props.startWorkspace(workspace, { 'debug-workspace-start': true });
           this.props.history.replace({
             pathname: `/ide/${namespace}/${workspaceName}?tab=${IdeLoaderTab[IdeLoaderTab.Logs]}`
           });
@@ -117,14 +117,14 @@ class WorkspaceDetailsContainer extends React.PureComponent<Props> {
         break;
       case WorkspaceAction.START_IN_BACKGROUND:
         try {
-          await this.props.startWorkspace(workspace.id);
+          await this.props.startWorkspace(workspace);
         } catch (e) {
           this.showAlert(`Unable to ${WorkspaceAction.START_IN_BACKGROUND.toLowerCase()}. ${e}`);
         }
         break;
       case WorkspaceAction.STOP_WORKSPACE:
         try {
-          await this.props.stopWorkspace(workspace.id);
+          await this.props.stopWorkspace(workspace);
         } catch (e) {
           this.showAlert(`Unable to ${WorkspaceAction.STOP_WORKSPACE.toLowerCase()}. ${e}`);
         }

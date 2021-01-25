@@ -54,7 +54,7 @@ class WorkspaceRunAction extends React.PureComponent<Props, State> {
       return;
     }
 
-    this.props.startWorkspace(this.props.workspaceId);
+    // this.props.startWorkspace(this.props.workspaceId);
     this.debounce.setDelay();
   }
 

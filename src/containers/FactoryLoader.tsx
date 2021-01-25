@@ -96,7 +96,7 @@ export class FactoryLoaderContainer extends React.PureComponent<Props, State> {
       workspace && WorkspaceStatus[workspace.status] === WorkspaceStatus.RUNNING) {
       this.setState({ currentStep: LoadFactorySteps.OPEN_IDE });
       try {
-        await this.props.requestWorkspace(workspace.id);
+        await this.props.requestWorkspace(workspace);
       } catch (e) {
         this.showAlert(`Getting workspace detail data failed. ${e}`);
       }
@@ -199,7 +199,7 @@ export class FactoryLoaderContainer extends React.PureComponent<Props, State> {
       this.setState({ currentStep: LoadFactorySteps.START_WORKSPACE });
       const workspaceName = workspace.devfile.metadata.name;
       try {
-        await this.props.startWorkspace(`${workspace.id}`);
+        await this.props.startWorkspace(workspace);
       } catch (e) {
         this.showAlert(`Workspace ${workspaceName} failed to start. ${e.message ? e.message : ''}`);
         return;

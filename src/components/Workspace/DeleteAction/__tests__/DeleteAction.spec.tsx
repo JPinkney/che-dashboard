@@ -171,8 +171,8 @@ function createComponent(
         requestWorkspaces={jest.fn()}
         requestWorkspace={jest.fn()}
         startWorkspace={jest.fn()}
-        stopWorkspace={async (id: string) => stopWorkspace(id)}
-        deleteWorkspace={async (id: string) => deleteWorkspace(id)}
+        stopWorkspace={async (workspace: che.Workspace) => stopWorkspace(workspace)}
+        deleteWorkspace={async (workspace: che.Workspace) => deleteWorkspace(workspace)}
         updateWorkspace={jest.fn()}
         createWorkspaceFromDevfile={jest.fn()}
         requestSettings={jest.fn()}

@@ -11,10 +11,6 @@
  */
 
 import { injectable } from 'inversify';
-import { KeycloakAuthService } from '../keycloak/auth';
-import { DevWorkspaceClient as WorkspaceClient } from '@eclipse-che/devworkspace-client';
-import { IDevWorkspaceApi } from '@eclipse-che/devworkspace-client/dist/api';
-import { AxiosRequestConfig } from 'axios';
 
 /**
  * This class manages the api connection.
@@ -22,51 +18,47 @@ import { AxiosRequestConfig } from 'axios';
 @injectable()
 export class DevWorkspaceClient {
 
-  private devworkspaceApi: IDevWorkspaceApi;
+  getAllWorkspaces(namespace: string): Promise<any> {
+    return fetch(`http://localhost:8080/workspace/namespace/${namespace}`).then(response => response?.json());
+  }
 
-  /**
-   * Default constructor that is using resource.
-   */
-  constructor() {
-    const originLocation = new URL(window.location.href).origin;
-    this.devworkspaceApi = WorkspaceClient.getApi(this.refreshToken);
-    this.devworkspaceApi.configureAxios({
-      baseURL: originLocation
+  getWorkspaceByName(namespace: string, workspaceName: string): Promise<any> {
+    return fetch(`http://localhost:8080/workspace/namespace/${namespace}/${workspaceName}`);
+  }
+
+  create(devfile: any): Promise<any> {
+    return fetch('http://localhost:8080/workspace', {
+      method: 'POST',
+      body: devfile
     });
   }
 
-  get devWorkspaceClientRestApi(): IDevWorkspaceApi {
-    return this.devworkspaceApi;
+  delete(namespace: string, name: string): Promise<any> {
+    return fetch(`http://localhost:8080/workspace/namespace/${namespace}/${name}`, {
+      method: 'DELETE'
+    });
   }
 
-  private get token(): string | undefined {
-    const { keycloak } = KeycloakAuthService;
-    return keycloak ? keycloak.token : undefined;
+  changeWorkspaceStatus(workspace: any, started: boolean): Promise<any> {
+    return fetch(`http://localhost:8080/workspace/namespace/${workspace.metadata.namespace}/${workspace.metadata.name}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ started }),
+      headers: {
+        'Content-type': 'application/merge-patch+json'
+      }
+    });
   }
 
-  private refreshToken(request?: AxiosRequestConfig): Promise<string | Error> {
-    const { keycloak } = KeycloakAuthService;
-    if (keycloak) {
-      return new Promise((resolve, reject) => {
-        keycloak.updateToken(5).success((refreshed: boolean) => {
-          if (refreshed && keycloak.token) {
-            const header = 'Authorization';
-            this.devworkspaceApi.configureAxios({
-              token: keycloak.token
-            });
-            if (request) {
-              request.headers.common[header] = `Bearer ${keycloak.token}`;
-            }
-          }
-          resolve(keycloak.token as string);
-        }).error((error: any) => {
-          reject(new Error(error));
-        });
-      });
-    }
-    if (!this.token) {
-      return Promise.reject(new Error('Unable to resolve token'));
-    }
-    return Promise.resolve(this.token);
+  subscribeToNamespace(namespace: string): Promise<any> {
+    return fetch(`http://localhost:8080/workspace/namespace/${namespace}/subscribe`, {
+      method: 'GET'
+    }).then(response => response?.json());
   }
+
+  unsubscribeFromNamespace(namespace: string): Promise<any> {
+    return fetch(`http://localhost:8080/workspace/namespace/${namespace}/subscribe`, {
+      method: 'DELETE'
+    });
+  }
+
 }

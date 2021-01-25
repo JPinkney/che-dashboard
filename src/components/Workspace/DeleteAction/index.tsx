@@ -88,7 +88,7 @@ export class WorkspaceDeleteAction extends React.PureComponent<Props, State> {
     if (index > -1 && this.props.status === WorkspaceStatus.STOPPED) {
       WorkspaceDeleteAction.shouldDelete.splice(index, 1);
       try {
-        await this.props.deleteWorkspace(this.props.workspaceId);
+        // await this.props.deleteWorkspace(this.props.workspaceId);
         this.showAlert('Workspace successfully deleted.', AlertVariant.success);
       } catch (e) {
         this.showAlert(`Unable to delete the workspace. ${e}`);
@@ -128,7 +128,7 @@ export class WorkspaceDeleteAction extends React.PureComponent<Props, State> {
         WorkspaceDeleteAction.shouldDelete.push(this.props.workspaceId);
       }
       try {
-        await this.props.stopWorkspace(this.props.workspaceId);
+        // await this.props.stopWorkspace(this.props.workspace);
       } catch (e) {
         this.showAlert(`Unable to stop the workspace. ${e}`);
         return;
@@ -137,7 +137,7 @@ export class WorkspaceDeleteAction extends React.PureComponent<Props, State> {
     }
 
     try {
-      await this.props.deleteWorkspace(this.props.workspaceId);
+      // await this.props.deleteWorkspace(this.props.workspaceId);
       this.showAlert('Workspace successfully deleted.', AlertVariant.success);
     } catch (e) {
       this.showAlert(`Unable to delete the workspace. ${e}`);

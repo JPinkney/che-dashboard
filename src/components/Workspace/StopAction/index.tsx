@@ -54,7 +54,7 @@ class WorkspaceStopAction extends React.PureComponent<Props, State> {
       return;
     }
 
-    this.props.stopWorkspace(this.props.workspaceId);
+    // this.props.stopWorkspace(this.props.workspaceId);
     this.debounce.setDelay();
   }
 
