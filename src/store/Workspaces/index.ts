@@ -241,7 +241,7 @@ export const actionCreators: ActionCreators = {
 
     try {
       const workspaces = await WorkspaceClient.restApiClient.getAll<che.Workspace>();
-      const devworkspaces = await DWClient.getAllWorkspaces('sample');
+      const devworkspaces = await DWClient.getAllWorkspaces('test');
       devworkspaces.forEach((devworkspace: any) => {
         devworkspace.namespace = devworkspace.metadata.namespace;
         devworkspace.devfile = {
