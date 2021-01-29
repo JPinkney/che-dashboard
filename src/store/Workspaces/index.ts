@@ -19,6 +19,7 @@ import { CheWorkspaceClient } from '../../services/cheWorkspaceClient';
 import { WorkspaceStatus } from '../../services/helpers/types';
 import { createState } from '../helpers';
 import { DevWorkspaceClient } from '../../services/devWorkspaceClient';
+import { convertDevWorkspaceV2ToV1, isDevWorkspace } from '../../devworkspace';
 
 const WorkspaceClient = container.get(CheWorkspaceClient);
 const DWClient = container.get(DevWorkspaceClient);
@@ -127,6 +128,7 @@ export type ResourceQueryParams = {
   [propName: string]: string | boolean | undefined;
 }
 export type ActionCreators = {
+  updateDevWorkspaceStatus: (workspace: che.Workspace, message: any) => AppThunk<KnownAction, Promise<void>>;
   requestWorkspaces: () => AppThunk<KnownAction, Promise<void>>;
   requestWorkspace: (workspace: che.Workspace) => AppThunk<KnownAction, Promise<void>>;
   startWorkspace: (workspace: che.Workspace, params?: ResourceQueryParams) => AppThunk<KnownAction, Promise<void>>;
@@ -153,43 +155,40 @@ type EnvironmentOutputMessageHandler = (message: api.che.workspace.event.Runtime
 const subscribedWorkspaceStatusCallbacks = new Map<string, WorkspaceStatusMessageHandler>();
 const subscribedEnvironmentOutputCallbacks = new Map<string, EnvironmentOutputMessageHandler>();
 
+function onStatusUpdateReceived(
+  workspace: che.Workspace,
+  dispatch: ThunkDispatch<State, undefined, UpdateWorkspaceStatusAction | UpdateWorkspacesLogsAction | DeleteWorkspaceLogsAction>,
+  message: any) {
+  let status: string;
+  if (message.error) {
+    const workspacesLogs = new Map<string, string[]>();
+    workspacesLogs.set(workspace.id, [`Error: Failed to run the workspace: "${message.error}"`]);
+    dispatch({
+      type: 'UPDATE_WORKSPACES_LOGS',
+      workspacesLogs,
+    });
+    status = WorkspaceStatus[WorkspaceStatus.ERROR];
+  } else {
+    status = message.status;
+  }
+  if (WorkspaceStatus[status]) {
+    dispatch({
+      type: 'UPDATE_WORKSPACE_STATUS',
+      workspaceId: workspace.id,
+      status,
+    });
+  }
+  if (WorkspaceStatus[WorkspaceStatus.STARTING] !== status) {
+    unSubscribeToEnvironmentOutput(workspace.id);
+  }
+}
+
 function subscribeToStatusChange(
   workspace: che.Workspace,
   dispatch: ThunkDispatch<State, undefined, UpdateWorkspaceStatusAction | UpdateWorkspacesLogsAction | DeleteWorkspaceLogsAction>): void {
-  const callback = message => {
-    let status: string;
-    if (message.error) {
-      const workspacesLogs = new Map<string, string[]>();
-      workspacesLogs.set(workspace.id, [`Error: Failed to run the workspace: "${message.error}"`]);
-      dispatch({
-        type: 'UPDATE_WORKSPACES_LOGS',
-        workspacesLogs,
-      });
-      status = WorkspaceStatus[WorkspaceStatus.ERROR];
-    } else {
-      status = message.status;
-    }
-    if (WorkspaceStatus[status]) {
-      dispatch({
-        type: 'UPDATE_WORKSPACE_STATUS',
-        workspaceId: workspace.id,
-        status,
-      });
-    }
-    if (WorkspaceStatus[WorkspaceStatus.STARTING] !== status) {
-      unSubscribeToEnvironmentOutput(workspace.id);
-    }
-  };
 
-  // {error: "Runtime start for identity 'workspace: workspacexk…4ac0c-07ad-48e1-a41b-a938d69f0d93' is interrupted", initiatedByUser: true, status: "STOPPED", prevStatus: "STARTING", workspaceId: "workspacexkr7kbeuocch8mxl"}
-  // TODO just check if workspace is devworkspace
-  if ((workspace as any).metadata?.namespace !== undefined) {
-    const namespace = (workspace as any).metadata?.namespace;
-    // TODO go through the response buffer
-    DWClient.subscribeToNamespace(namespace).then(d => {
-      console.log(d);
-    });
-  } else {
+  const callback = (message: any) => onStatusUpdateReceived(workspace, dispatch, message);
+  if (!isDevWorkspace(workspace)) {
     WorkspaceClient.jsonRpcMasterApi.subscribeWorkspaceStatus(workspace.id, callback);
     subscribedWorkspaceStatusCallbacks.set(workspace.id, callback);
   }
@@ -236,42 +235,22 @@ function unSubscribeToEnvironmentOutput(workspaceId: string): void {
 // They don't directly mutate state, but they can have external side-effects (such as loading data).
 export const actionCreators: ActionCreators = {
 
+  updateDevWorkspaceStatus: (workspace: che.Workspace, message: any): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
+    onStatusUpdateReceived(workspace, dispatch, message);
+  },
+
   requestWorkspaces: (): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
     dispatch({ type: 'REQUEST_WORKSPACES' });
 
     try {
       const workspaces = await WorkspaceClient.restApiClient.getAll<che.Workspace>();
-      const devworkspaces = await DWClient.getAllWorkspaces('test');
-      devworkspaces.forEach((devworkspace: any) => {
-        devworkspace.namespace = devworkspace.metadata.namespace;
-        devworkspace.devfile = {
-          metadata: devworkspace.metadata
-        };
-        devworkspace.attributes = {
-          infrastructureNamespace: devworkspace.namespace,
-          created: '1611066990669',
-          updated: '1611066990669'
-        };
-        devworkspace.id = devworkspace.status.workspaceId;
-        devworkspace.runtime = {
-          status: 'RUNNING',
-          activeEnv: '',
-          machines: {
-            theia: {
-              servers: {
-                theia: {
-                  attributes: {
-                    type: 'ide'
-                  },
-                  url: devworkspace.status.ideUrl
-                }
-              }
-            }
-          }
-        };
-        devworkspace.status = devworkspace.status.phase.toUpperCase();
+      const namespaces = await WorkspaceClient.restApiClient.getKubernetesNamespace();
+      const devworkspaces = await DWClient.getAllWorkspaces(namespaces);
+      devworkspaces.forEach(namespace => {
+        namespace.forEach(workspace => {
+          workspaces.push(convertDevWorkspaceV2ToV1(workspace));
+        });
       });
-      const availableWorkspaces = workspaces.concat(devworkspaces as che.Workspace[]);
 
       // Unsubscribe
       subscribedWorkspaceStatusCallbacks.forEach((workspaceStatusCallback: WorkspaceStatusMessageHandler, workspaceId: string) => {
@@ -279,11 +258,11 @@ export const actionCreators: ActionCreators = {
       });
 
       // Subscribe
-      availableWorkspaces.forEach((workspace: any) => {
+      workspaces.forEach((workspace: any) => {
         subscribeToStatusChange(workspace, dispatch);
       });
 
-      dispatch({ type: 'RECEIVE_WORKSPACES', workspaces: availableWorkspaces });
+      dispatch({ type: 'RECEIVE_WORKSPACES', workspaces });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
       throw new Error('Failed to request workspaces: \n' + e);
@@ -296,10 +275,11 @@ export const actionCreators: ActionCreators = {
 
     try {
       let workspace: any;
-      if ((cheWorkspace as any).kind === 'DevWorkspace') {
+      if (isDevWorkspace(cheWorkspace)) {
         const namespace = cheWorkspace.metadata.namespace;
         const name = cheWorkspace.metadata.name;
-        workspace = await DWClient.getWorkspaceByName(namespace, name);
+        const newWorkspace = await DWClient.getWorkspaceByName(namespace, name);
+        workspace = convertDevWorkspaceV2ToV1(newWorkspace);
       } else {
         workspace = await WorkspaceClient.restApiClient.getById<che.Workspace>(cheWorkspace.id);
       }
@@ -326,8 +306,9 @@ export const actionCreators: ActionCreators = {
   startWorkspace: (cheWorkspace: che.Workspace, params?: ResourceQueryParams): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
     try {
       let workspace: che.Workspace;
-      if ((cheWorkspace as any).kind === 'DevWorkspace') {
-        workspace = await DWClient.changeWorkspaceStatus(cheWorkspace, true);
+      if (isDevWorkspace(cheWorkspace)) {
+        const newWorkspace = await DWClient.changeWorkspaceStatus(cheWorkspace, true);
+        workspace = convertDevWorkspaceV2ToV1(newWorkspace);
       } else {
         workspace = await WorkspaceClient.restApiClient.start<che.Workspace>(cheWorkspace.id, params);
       }
@@ -341,7 +322,7 @@ export const actionCreators: ActionCreators = {
 
   stopWorkspace: (workspace: che.Workspace): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
     try {
-      if ((workspace as any).kind === 'DevWorkspace') {
+      if (isDevWorkspace(workspace)) {
         DWClient.changeWorkspaceStatus(workspace, false);
       } else {
         WorkspaceClient.restApiClient.stop(workspace.id);
@@ -354,7 +335,7 @@ export const actionCreators: ActionCreators = {
 
   deleteWorkspace: (workspace: any): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
     try {
-      if ((workspace as any).kind === 'DevWorkspace') {
+      if (isDevWorkspace(workspace)) {
         const namespace = workspace.metadata.namespace;
         const name = workspace.metadata.name;
         await DWClient.delete(namespace, name);
@@ -410,8 +391,14 @@ export const actionCreators: ActionCreators = {
     try {
       const param = { attributes, namespace, infrastructureNamespace };
       let workspace;
-      if ((devfile as any).kind === 'DevWorkspace') {
-        workspace = await DWClient.create(devfile);
+      if (isDevWorkspace(devfile)) {
+        // If the devworkspace doesn't not have a namespace then we assign it to the default of kubernetesNamespace?
+        if (!(devfile as any).metadata.namespace) {
+          const defaultNamespaces = (await WorkspaceClient.restApiClient.getKubernetesNamespace()).filter(x => x.attributes.default === 'true');
+          (devfile as any).metadata.namespace = defaultNamespaces[0].name;
+        }
+        const newWorkspace = await DWClient.create(devfile);
+        workspace = convertDevWorkspaceV2ToV1(newWorkspace);
       } else {
         workspace = await WorkspaceClient.restApiClient.create<che.Workspace>(devfile, param);
       }

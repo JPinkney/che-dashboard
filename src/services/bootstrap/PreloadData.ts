@@ -24,6 +24,7 @@ import * as Plugins from '../../store/Plugins';
 import { KeycloakAuthService } from '../keycloak/auth';
 import { CheWorkspaceClient } from '../cheWorkspaceClient';
 import { DevWorkspaceClient } from '../devWorkspaceClient';
+import { KubernetesNamespace } from '@eclipse-che/workspace-client/dist/rest/resources';
 
 /**
  * This class prepares all init data.
@@ -60,11 +61,10 @@ export class PreloadData {
     this.updateWorkspaces();
     this.updateInfrastructureNamespaces();
 
-    // fetch('http://localhost:8080/apis/workspace.devfile.io/v1alpha2/namespaces/sample/devworkspaces?watch=true').then(response => {
-    //     return this.bufferResponse(response);
-    // }).then((d) => {
-    //   console.log(d);
-    // });
+    const availableNamespaces = await this.cheWorkspaceClient.restApiClient.getKubernetesNamespace();
+    this.precreateNamespaces(availableNamespaces);
+    this.watchNamespaces(availableNamespaces);
+
     const settings = await this.updateWorkspaceSettings();
     await this.updatePlugins(settings);
     await this.updateRegistriesMetadata(settings);
@@ -82,6 +82,15 @@ export class PreloadData {
 
   private async updateJsonRpcMasterApi(): Promise<void> {
     return this.cheWorkspaceClient.updateJsonRpcMasterApi();
+  }
+
+  private async precreateNamespaces(namespaces: KubernetesNamespace[]): Promise<void> {
+    return this.devWorkspaceClient.precreateNamespaces(namespaces);
+  }
+
+  private async watchNamespaces(namespaces: KubernetesNamespace[]): Promise<void> {
+    const { updateDevWorkspaceStatus } = WorkspacesStore.actionCreators;
+    return this.devWorkspaceClient.subscribeToNamespaces(namespaces, updateDevWorkspaceStatus, this.store.dispatch);
   }
 
   private setUser(): void {

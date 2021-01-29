@@ -165,6 +165,7 @@ function createComponent(
   return (
     <Provider store={store}>
       <WorkspaceDeleteAction
+        updateDevWorkspaceStatus={jest.fn()}
         status={workspaceStatus}
         disabled={disabled}
         workspaceId={workspaceId}
